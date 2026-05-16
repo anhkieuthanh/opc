@@ -378,6 +378,7 @@ def onboard(
             )
             if typer.confirm("Overwrite?"):
                 config = _apply_workspace_override(Config())
+                _set_worker_mode(config, reason="default for new setup")
                 save_config(config, config_path)
                 console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
             else:
@@ -388,6 +389,7 @@ def onboard(
                 )
     else:
         config = _apply_workspace_override(Config())
+        _set_worker_mode(config, reason="default for new setup")
         # In wizard mode, don't save yet - the wizard will handle saving if should_save=True
         if not wizard:
             save_config(config, config_path)
@@ -484,6 +486,15 @@ def _model_display(config: Config) -> tuple[str, str]:
     name = config.agents.defaults.model_preset
     tag = f" (preset: {name})" if name else ""
     return resolved.model, tag
+
+
+def _set_worker_mode(config: Config, *, reason: str | None = None) -> None:
+    """Force worker runtime mode and emit a concise note when transitioning."""
+    if config.runtime.mode == "worker":
+        return
+    config.runtime.mode = "worker"
+    if reason:
+        console.print(f"[dim]Runtime mode set to worker ({reason}).[/dim]")
 
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
@@ -595,6 +606,8 @@ def serve(
         raise typer.Exit(1) from exc
 
     model_name, preset_tag = _model_display(runtime_config)
+    if runtime_config.is_worker_mode:
+        console.print("[dim]Worker mode active: external chat channels remain suppressed by runtime profile.[/dim]")
     console.print(f"{__logo__} Starting OpenAI-compatible API server")
     console.print(f"  [cyan]Endpoint[/cyan] : http://{host}:{port}/v1/chat/completions")
     console.print(f"  [cyan]Model[/cyan]    : {model_name}{preset_tag}")
@@ -664,6 +677,7 @@ def serve_paperclip_bridge(
         logger.disable("nanobot")
 
     runtime_config = _load_runtime_config(config, workspace)
+    _set_worker_mode(runtime_config, reason="required by paperclip bridge runtime")
     api_cfg = runtime_config.api
     host = host if host is not None else api_cfg.host
     port = port if port is not None else api_cfg.port
@@ -746,6 +760,10 @@ def gateway(
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
     cfg = _load_runtime_config(config, workspace)
+    if cfg.is_worker_mode and not cfg.runtime.worker_channel_allowlist:
+        console.print(
+            "[yellow]Worker mode active with empty channel allowlist; gateway will start without external chat channels.[/yellow]"
+        )
     _run_gateway(cfg, port=port)
 
 

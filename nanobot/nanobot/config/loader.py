@@ -169,4 +169,20 @@ def _migrate_config(data: dict) -> dict:
         else:
             tools.pop("mySet", None)
 
+    # Runtime profile migration:
+    # - runtime.workerMode (bool) -> runtime.mode ("worker" | "full")
+    # - runtime.allowedChannels (list[str]) -> runtime.workerChannelAllowlist
+    runtime = data.get("runtime", {})
+    if not isinstance(runtime, dict):
+        runtime = {}
+    worker_mode = runtime.pop("workerMode", None)
+    if isinstance(worker_mode, bool) and "mode" not in runtime:
+        runtime["mode"] = "worker" if worker_mode else "full"
+    if "allowedChannels" in runtime and "workerChannelAllowlist" not in runtime:
+        allowed = runtime.pop("allowedChannels")
+        if isinstance(allowed, list):
+            runtime["workerChannelAllowlist"] = allowed
+    if runtime:
+        data["runtime"] = runtime
+
     return data

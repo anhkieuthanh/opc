@@ -76,8 +76,16 @@ class ChannelManager:
         transcription_key = self._resolve_transcription_key(transcription_provider)
         transcription_base = self._resolve_transcription_base(transcription_provider)
         transcription_language = self.config.channels.transcription_language
+        is_worker_mode = self._is_worker_mode()
+        worker_allowlist = self._worker_channel_allowlist()
 
         for name, cls in discover_all().items():
+            if is_worker_mode and name.lower() not in worker_allowlist:
+                logger.info(
+                    "Skipping {} channel in worker mode (not allowlisted)",
+                    name,
+                )
+                continue
             section = getattr(self.config.channels, name, None)
             if section is None:
                 continue
@@ -120,6 +128,18 @@ class ChannelManager:
                 logger.warning("{} channel not available: {}", name, e)
 
         self._validate_allow_from()
+
+    def _is_worker_mode(self) -> bool:
+        runtime = getattr(self.config, "runtime", None)
+        mode = getattr(runtime, "mode", "full")
+        return mode == "worker"
+
+    def _worker_channel_allowlist(self) -> set[str]:
+        runtime = getattr(self.config, "runtime", None)
+        raw = getattr(runtime, "worker_channel_allowlist", [])
+        if not isinstance(raw, list):
+            return set()
+        return {name.strip().lower() for name in raw if isinstance(name, str) and name.strip()}
 
     def _resolve_transcription_key(self, provider: str) -> str:
         """Pick the API key for the configured transcription provider."""

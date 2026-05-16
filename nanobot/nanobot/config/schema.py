@@ -23,6 +23,22 @@ class Base(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+if not TYPE_CHECKING:
+    # Runtime-safe placeholders so Config can always build even before
+    # tool modules are imported and forward refs are rebound.
+    class WebToolsConfig(Base):
+        pass
+
+    class ExecToolConfig(Base):
+        pass
+
+    class MyToolConfig(Base):
+        pass
+
+    class ImageGenerationToolConfig(Base):
+        pass
+
+
 class ChannelsConfig(Base):
     """Configuration for chat channels.
 
@@ -242,6 +258,21 @@ class GatewayConfig(Base):
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
 
 
+class RuntimeConfig(Base):
+    """Runtime shape configuration for worker-vs-full operation."""
+
+    mode: Literal["full", "worker"] = "full"
+    worker_channel_allowlist: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "workerChannelAllowlist",
+            "worker_channel_allowlist",
+            "allowedChannels",
+        ),
+        serialization_alias="workerChannelAllowlist",
+    )
+
+
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
@@ -285,6 +316,7 @@ class Config(BaseSettings):
     """Root configuration for nanobot."""
 
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
@@ -329,6 +361,11 @@ class Config(BaseSettings):
     def workspace_path(self) -> Path:
         """Get expanded workspace path."""
         return Path(self.agents.defaults.workspace).expanduser()
+
+    @property
+    def is_worker_mode(self) -> bool:
+        """Return True when runtime is configured for worker-first operation."""
+        return self.runtime.mode == "worker"
 
     def _match_provider(
         self, model: str | None = None,
