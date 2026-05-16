@@ -54,6 +54,7 @@ export const AGENT_ROLES = [
   "qa",
   "devops",
   "researcher",
+  "writer",
   "general",
 ] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
@@ -70,8 +71,12 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   qa: "QA",
   devops: "DevOps",
   researcher: "Researcher",
+  writer: "Writer",
   general: "General",
 };
+
+export const CONTENT_AGENCY_ROLE_CHAIN = ["pm", "researcher", "writer"] as const;
+export type ContentAgencyRole = (typeof CONTENT_AGENCY_ROLE_CHAIN)[number];
 
 export const AGENT_DEFAULT_MAX_CONCURRENT_RUNS = 20;
 export const WORKSPACE_BRANCH_ROUTINE_VARIABLE = "workspaceBranch";

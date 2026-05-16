@@ -636,6 +636,13 @@ export function NewIssueDialog() {
     setDraftHasText(nextTitle.trim().length > 0 || nextDescription.trim().length > 0);
   }, []);
 
+  const applyContentAgencyTemplate = useCallback(() => {
+    setIssueText(
+      "Content Agency: [topic]",
+      "## Brief\n\nDescribe the content goal here.\n\n## Chain\n\nManager/Editor → Researcher → Writer\n\n## Deliverable\n\nFinal reviewed content artifact.",
+    );
+  }, [setIssueText]);
+
   const queueDraftSave = useCallback((overrides: { title?: string; description?: string } = {}) => {
     if (!newIssueOpen) return;
     const nextTitle = overrides.title ?? titleRef.current;
@@ -1326,6 +1333,15 @@ export function NewIssueDialog() {
               projectSelectorRef={projectSelectorRef}
               onChange={handleTitleChange}
             />
+            {!title.trim() && (
+              <button
+                type="button"
+                className="mt-1 text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                onClick={applyContentAgencyTemplate}
+              >
+                Use Content Agency template
+              </button>
+            )}
           </div>
 
           <div className="px-4 pb-2">

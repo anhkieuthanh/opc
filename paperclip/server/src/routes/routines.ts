@@ -450,5 +450,27 @@ export function routineRoutes(
     res.status(202).json(result);
   });
 
+  router.get("/companies/:companyId/content-agency/workflow-scaffold", (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json({
+      description: "Content Agency workflow scaffold — Manager/Editor → Researcher → Writer role chain",
+      chain: ["pm", "researcher", "writer"],
+      routineTemplate: {
+        title: "Content Agency Workflow",
+        description:
+          "Runs the Content Agency role chain: editorial direction, research, and writing through governed Paperclip task handoffs.",
+        concurrencyPolicy: "coalesce_if_active",
+        catchUpPolicy: "skip_missed",
+        priority: "medium",
+      },
+      issueDefaults: {
+        status: "todo",
+        priority: "medium",
+      },
+      handoffNote: "Use POST /companies/:companyId/issues/:issueId/content-agency/handoff to advance an issue to the next role.",
+    });
+  });
+
   return router;
 }

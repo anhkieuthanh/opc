@@ -203,6 +203,112 @@ describe("http adapter execute", () => {
   });
 });
 
+describe("content agency http adapter dispatch", () => {
+  it("sends role field from payloadTemplate for each Content Agency role", async () => {
+    const roles = ["manager_editor", "researcher", "writer"] as const;
+
+    for (const role of roles) {
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ status: "accepted", summary: `${role} dispatched` }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await execute({
+        runId: `run-${role}`,
+        agent: {
+          id: `agent-${role}`,
+          companyId: "company-1",
+          name: `Content ${role}`,
+          adapterType: "http",
+          adapterConfig: {},
+        },
+        runtime: {
+          sessionId: null,
+          sessionParams: null,
+          sessionDisplayId: null,
+          taskKey: null,
+        },
+        config: {
+          url: "https://nanobot.test/paperclip/dispatch",
+          headers: { authorization: "Bearer bridge-token" },
+          payloadTemplate: { role },
+        },
+        context: {
+          issueId: `issue-${role}`,
+          companyId: "company-1",
+        },
+        onLog: async () => {},
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      expect(body.role).toBe(role);
+      expect(body.issue_id).toBe(`issue-${role}`);
+
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("bridge payload includes all required correlation fields", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ status: "succeeded", summary: "Done" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await execute({
+      runId: "run-bridge-1",
+      agent: {
+        id: "agent-researcher",
+        companyId: "company-ca",
+        name: "Content Researcher",
+        adapterType: "http",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        url: "https://nanobot.test/paperclip/dispatch",
+        payloadTemplate: { role: "researcher" },
+      },
+      context: {
+        dispatchId: "dispatch-abc",
+        issueId: "issue-abc",
+        companyId: "company-ca",
+        idempotencyKey: "ikey-abc",
+      },
+      onLog: async () => {},
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+
+    expect(body).toMatchObject({
+      role: "researcher",
+      agentId: "agent-researcher",
+      runId: "run-bridge-1",
+      run_id: "run-bridge-1",
+      dispatch_id: "dispatch-abc",
+      dispatchId: "dispatch-abc",
+      issue_id: "issue-abc",
+      issueId: "issue-abc",
+      company_id: "company-ca",
+      companyId: "company-ca",
+      idempotency_key: "ikey-abc",
+      idempotencyKey: "ikey-abc",
+    });
+  });
+});
+
 describe("http adapter testEnvironment", () => {
   it("probes configured healthUrl with GET for bridge endpoints", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));

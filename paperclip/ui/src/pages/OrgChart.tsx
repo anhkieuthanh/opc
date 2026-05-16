@@ -11,7 +11,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
 import { Download, Maximize2, Minus, Network, Plus, Upload } from "lucide-react";
-import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { AGENT_ROLE_LABELS, CONTENT_AGENCY_ROLE_CHAIN, type Agent } from "@paperclipai/shared";
 
 // Layout constants
 const CARD_W = 200;
@@ -191,6 +191,11 @@ export function OrgChart() {
     const m = new Map<string, Agent>();
     for (const a of agents ?? []) m.set(a.id, a);
     return m;
+  }, [agents]);
+
+  const contentAgencyChain = useMemo(() => {
+    if (!agents) return [];
+    return CONTENT_AGENCY_ROLE_CHAIN.map((role) => agents.filter((a) => a.role === role)).filter((group) => group.length > 0);
   }, [agents]);
 
   useEffect(() => {
@@ -455,6 +460,17 @@ export function OrgChart() {
             Export company
           </Button>
         </Link>
+        {contentAgencyChain.length > 0 && (
+          <div className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground">
+            <span className="font-medium text-foreground">Content Agency:</span>
+            {CONTENT_AGENCY_ROLE_CHAIN.map((role, idx) => (
+              <span key={role} className="flex items-center gap-0.5">
+                {idx > 0 && <span>→</span>}
+                <span>{AGENT_ROLE_LABELS[role]}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div
         ref={containerRef}

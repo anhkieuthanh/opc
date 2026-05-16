@@ -1,3 +1,4 @@
+import { CONTENT_AGENCY_ROLE_CHAIN, type ContentAgencyRole } from "@paperclipai/shared";
 import { logger } from "../middleware/logger.js";
 
 type WakeupTriggerDetail = "manual" | "ping" | "callback" | "system";
@@ -16,6 +17,12 @@ export interface IssueAssignmentWakeupDeps {
       contextSnapshot?: Record<string, unknown>;
     },
   ) => Promise<unknown>;
+}
+
+export function resolveNextContentAgencyRole(currentRole: string): ContentAgencyRole | null {
+  const idx = CONTENT_AGENCY_ROLE_CHAIN.indexOf(currentRole as ContentAgencyRole);
+  if (idx === -1 || idx >= CONTENT_AGENCY_ROLE_CHAIN.length - 1) return null;
+  return CONTENT_AGENCY_ROLE_CHAIN[idx + 1];
 }
 
 export function queueIssueAssignmentWakeup(input: {

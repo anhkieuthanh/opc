@@ -89,7 +89,10 @@ import {
   normalizeContentType,
   SVG_CONTENT_TYPE,
 } from "../attachment-types.js";
-import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
+import {
+  queueIssueAssignmentWakeup,
+  resolveNextContentAgencyRole,
+} from "../services/issue-assignment-wakeup.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
 import { executionWorkspaceService as executionWorkspaceServiceDirect } from "../services/execution-workspaces.js";
 import { feedbackService } from "../services/feedback.js";
@@ -5004,6 +5007,95 @@ export function issueRoutes(
     });
 
     res.json({ ok: true });
+  });
+
+  router.post("/companies/:companyId/issues/:issueId/content-agency/handoff", async (req, res) => {
+    const { companyId, issueId } = req.params as { companyId: string; issueId: string };
+    assertCompanyAccess(req, companyId);
+    assertBoard(req);
+
+    const issue = await svc.getById(issueId);
+    if (!issue || issue.companyId !== companyId) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+
+    if (!issue.assigneeAgentId) {
+      res.status(422).json({ error: "Issue must have a current assignee to advance the chain" });
+      return;
+    }
+
+    const currentAgent = await agentsSvc.getById(issue.assigneeAgentId);
+    if (!currentAgent) {
+      res.status(422).json({ error: "Current assignee agent not found" });
+      return;
+    }
+
+    const nextRole = resolveNextContentAgencyRole(currentAgent.role);
+    if (!nextRole) {
+      res.status(422).json({
+        error: `No next role in the Content Agency chain after "${currentAgent.role}"`,
+      });
+      return;
+    }
+
+    const nextAssigneeAgentId = typeof req.body?.nextAssigneeAgentId === "string"
+      ? req.body.nextAssigneeAgentId
+      : null;
+
+    if (!nextAssigneeAgentId) {
+      res.status(422).json({ error: "nextAssigneeAgentId is required" });
+      return;
+    }
+
+    const nextAgent = await agentsSvc.getById(nextAssigneeAgentId);
+    if (!nextAgent || nextAgent.companyId !== companyId) {
+      res.status(422).json({ error: "Next assignee agent not found in this company" });
+      return;
+    }
+
+    if (nextAgent.role !== nextRole) {
+      res.status(422).json({
+        error: `Expected next agent to have role "${nextRole}", got "${nextAgent.role}"`,
+      });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    const updated = await svc.update(issueId, {
+      assigneeAgentId: nextAssigneeAgentId,
+      actorAgentId: actor.agentId ?? null,
+      actorUserId: actor.actorType === "user" ? actor.actorId : null,
+    });
+
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "issue.content_agency_handoff",
+      entityType: "issue",
+      entityId: issueId,
+      details: {
+        fromAgentId: issue.assigneeAgentId,
+        fromRole: currentAgent.role,
+        toAgentId: nextAssigneeAgentId,
+        toRole: nextRole,
+      },
+    });
+
+    void queueIssueAssignmentWakeup({
+      heartbeat,
+      issue: updated ?? issue,
+      reason: "content_agency_chain_advance",
+      mutation: "handoff",
+      contextSource: "content_agency.handoff",
+      requestedByActorType: actor.actorType,
+      requestedByActorId: actor.actorId,
+    });
+
+    res.json({ ok: true, nextRole, nextAssigneeAgentId });
   });
 
   return router;

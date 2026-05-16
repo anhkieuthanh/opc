@@ -14,12 +14,43 @@ import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
   Bot,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listUIAdapters } from "../adapters";
 import { isVisualAdapterChoice } from "../adapters/metadata";
 import { getAdapterDisplay } from "../adapters/adapter-display-registry";
 import { useDisabledAdaptersSync } from "../adapters/use-disabled-adapters";
+
+const CONTENT_AGENCY_PRESETS = [
+  {
+    key: "manager_editor",
+    label: "Manager / Editor",
+    description: "Directs research and reviews content output",
+    role: "pm" as const,
+    adapterType: "http",
+    adapterConfig: { url: "", payloadTemplate: { role: "manager_editor" } },
+    suggestedName: "Content Manager",
+  },
+  {
+    key: "researcher",
+    label: "Researcher",
+    description: "Gathers sources and produces research briefs",
+    role: "researcher" as const,
+    adapterType: "http",
+    adapterConfig: { url: "", payloadTemplate: { role: "researcher" } },
+    suggestedName: "Content Researcher",
+  },
+  {
+    key: "writer",
+    label: "Writer",
+    description: "Drafts content from research and editorial guidance",
+    role: "writer" as const,
+    adapterType: "http",
+    adapterConfig: { url: "", payloadTemplate: { role: "writer" } },
+    suggestedName: "Content Writer",
+  },
+] as const;
 
 /**
  * Adapter types that are suitable for agent creation (excludes internal
@@ -36,6 +67,7 @@ export function NewAgentDialog() {
   const { selectedCompanyId } = useCompany();
   const navigate = useNavigate();
   const [showAdvancedCards, setShowAdvancedCards] = useState(false);
+  const [showContentAgencyCards, setShowContentAgencyCards] = useState(false);
   const disabledTypes = useDisabledAdaptersSync();
 
   // Fetch registered adapters from server (syncs disabled store + provides data)
@@ -98,6 +130,14 @@ export function NewAgentDialog() {
     setShowAdvancedCards(true);
   }
 
+  function handleContentAgencyPresetPick(preset: typeof CONTENT_AGENCY_PRESETS[number]) {
+    closeNewAgent();
+    setShowContentAgencyCards(false);
+    navigate(
+      `/agents/new?adapterType=${encodeURIComponent(preset.adapterType)}&role=${encodeURIComponent(preset.role)}&name=${encodeURIComponent(preset.suggestedName)}`,
+    );
+  }
+
   function handleAdvancedAdapterPick(adapterType: string) {
     closeNewAgent();
     setShowAdvancedCards(false);
@@ -110,6 +150,7 @@ export function NewAgentDialog() {
       onOpenChange={(open) => {
         if (!open) {
           setShowAdvancedCards(false);
+          setShowContentAgencyCards(false);
           closeNewAgent();
         }
       }}
@@ -127,6 +168,7 @@ export function NewAgentDialog() {
             className="text-muted-foreground"
             onClick={() => {
               setShowAdvancedCards(false);
+              setShowContentAgencyCards(false);
               closeNewAgent();
             }}
           >
@@ -135,7 +177,40 @@ export function NewAgentDialog() {
         </div>
 
         <div className="p-6 space-y-6">
-          {!showAdvancedCards ? (
+          {showContentAgencyCards ? (
+            <>
+              <div className="space-y-2">
+                <button
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowContentAgencyCards(false)}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back
+                </button>
+                <p className="text-sm text-muted-foreground">
+                  Pick a Content Agency role. Each worker connects to Nanobot via the HTTP bridge.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {CONTENT_AGENCY_PRESETS.map((preset, idx) => (
+                  <button
+                    key={preset.key}
+                    className="flex items-start gap-3 rounded-md border border-border p-3 text-left text-xs transition-colors hover:bg-accent/50"
+                    onClick={() => handleContentAgencyPresetPick(preset)}
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-foreground">
+                      {idx + 1}
+                    </span>
+                    <div className="space-y-0.5">
+                      <span className="block font-medium">{preset.label}</span>
+                      <span className="text-muted-foreground text-[10px]">{preset.description}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : !showAdvancedCards ? (
             <>
               {/* Recommendation */}
               <div className="text-center space-y-3">
@@ -153,6 +228,23 @@ export function NewAgentDialog() {
                 <Bot className="h-4 w-4 mr-2" />
                 Ask the CEO to create a new agent
               </Button>
+
+              {/* Content Agency quick-setup */}
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium">Content Agency</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Set up Manager/Editor, Researcher, and Writer workers backed by Nanobot.
+                </p>
+                <button
+                  className="text-xs text-foreground underline underline-offset-2 transition-colors hover:opacity-70"
+                  onClick={() => setShowContentAgencyCards(true)}
+                >
+                  Set up Content Agency workers
+                </button>
+              </div>
 
               {/* Advanced link */}
               <div className="text-center">

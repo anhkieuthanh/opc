@@ -1683,6 +1683,54 @@ export function agentRoutes(
     res.json(items);
   });
 
+  const CONTENT_AGENCY_WORKER_PRESETS = [
+    {
+      key: "manager_editor",
+      label: "Manager / Editor",
+      description: "Plans content briefs, assigns research work, and reviews output before delivery.",
+      suggestedName: "Content Manager",
+      role: "pm",
+      adapterType: "http",
+      adapterConfig: {
+        url: "",
+        payloadTemplate: { role: "manager_editor" },
+      },
+      capabilities: "Content planning, research direction, editorial review, and task assignment in the Content Agency chain.",
+    },
+    {
+      key: "researcher",
+      label: "Researcher",
+      description: "Gathers source material and produces structured research briefs for the Writer.",
+      suggestedName: "Content Researcher",
+      role: "researcher",
+      adapterType: "http",
+      adapterConfig: {
+        url: "",
+        payloadTemplate: { role: "researcher" },
+      },
+      capabilities: "Web research, source synthesis, and structured brief authoring for content production.",
+    },
+    {
+      key: "writer",
+      label: "Writer",
+      description: "Produces draft content from research briefs and incorporates editorial feedback.",
+      suggestedName: "Content Writer",
+      role: "writer",
+      adapterType: "http",
+      adapterConfig: {
+        url: "",
+        payloadTemplate: { role: "writer" },
+      },
+      capabilities: "Long-form content drafting, iteration on briefs, and final output authoring.",
+    },
+  ] as const;
+
+  router.get("/companies/:companyId/content-agency/worker-presets", (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.json(CONTENT_AGENCY_WORKER_PRESETS);
+  });
+
   router.get("/companies/:companyId/org", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
