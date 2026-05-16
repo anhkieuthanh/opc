@@ -1,0 +1,10 @@
+{
+  "name": "autonomous-agency-platform",
+  "private": true,
+  "description": "Root command surface for the Paperclip control plane and Nanobot worker workspace.",
+  "scripts": {
+    "dev:paperclip": "cd paperclip && pnpm dev",
+    "dev:nanobot": "cd nanobot && uv run nanobot agent",
+    "smoke": "bash scripts/smoke-integrated.sh"
+  }
+}

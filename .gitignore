@@ -1,0 +1,11 @@
+# Agent/runtime local config
+.codex/
+.claude/
+.gemini/
+
+# Imported legacy repos
+paperclip/
+nanobot/
+
+# Optional local noise
+.DS_Store
