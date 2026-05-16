@@ -3,9 +3,8 @@
 .claude/
 .gemini/
 
-# Imported legacy repos
-paperclip/
-nanobot/
+# Backup nested git metadata during monorepo flattening
+.nested_git_backup/
 
 # GSD planning and generated docs
 .planning/
