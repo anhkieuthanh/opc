@@ -7,5 +7,9 @@
 paperclip/
 nanobot/
 
+# GSD planning and generated docs
+.planning/
+docs/
+
 # Optional local noise
 .DS_Store
