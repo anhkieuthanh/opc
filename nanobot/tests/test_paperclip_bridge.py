@@ -192,3 +192,48 @@ def test_bridge_shapes_execution_failure() -> None:
             await client.close()
 
     _run(_test())
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+def test_bridge_same_run_id_uses_same_session_key() -> None:
+    """Verify that repeated dispatch with the same run_id uses the same session_key.
+
+    The Nanobot bridge derives session_key = f"paperclip:{run_id}" deterministically.
+    Two calls with the same run_id must therefore invoke process_direct with the
+    same session_key on both occasions — this is the idempotency property asserted here.
+    Note: the bridge does NOT return a cached response; it re-executes using the
+    same session memory associated with that session_key.
+    """
+    async def _test() -> None:
+        captured_keys: list[str] = []
+
+        async def process_and_capture(content: str, session_key: str, channel: str, chat_id: str) -> OutboundMessage:
+            captured_keys.append(session_key)
+            return OutboundMessage(
+                channel="paperclip_bridge",
+                chat_id=chat_id,
+                content="done",
+                media=[],
+                metadata={},
+            )
+
+        agent = _make_agent()
+        agent.process_direct = AsyncMock(side_effect=process_and_capture)
+        client = TestClient(TestServer(_create_bridge_app(agent)))
+        await client.start_server()
+        try:
+            payload = _bridge_payload(run_id="same-run-id")
+            for _ in range(2):
+                await client.post(
+                    PAPERCLIP_BRIDGE_PATH,
+                    json=payload,
+                    headers={PAPERCLIP_BRIDGE_AUTH_HEADER: "secret-token"},
+                )
+            # Both calls invoked process_direct (bridge re-executes, not cached)
+            assert len(captured_keys) == 2
+            # Both calls used the same session_key derived from run_id (idempotency property)
+            assert all(k == "paperclip:same-run-id" for k in captured_keys)
+        finally:
+            await client.close()
+
+    _run(_test())

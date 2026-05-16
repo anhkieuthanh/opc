@@ -309,6 +309,159 @@ describe("content agency http adapter dispatch", () => {
   });
 });
 
+describe("bridge contract assertions (per bridge-contract §Testing Implications)", () => {
+  // The bridge contract (docs/integration/paperclip-nanobot-bridge.md §Testing Implications)
+  // defines four implications that must be provable at the adapter level.
+
+  it("implication 1: adapter dispatches to bridge without client-side gate checks", async () => {
+    // The HTTP adapter does NOT implement approval or budget gates — it dispatches
+    // unconditionally when called. Gates are enforced by the heartbeat service layer
+    // above this adapter. This assertion explicitly documents the adapter boundary.
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ dispatch_id: "d-1", run_id: "r-1", status: "succeeded", summary: "Done" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await execute({
+      runId: "r-1",
+      agent: { id: "agent-1", companyId: "company-1", name: "Agent", adapterType: "http", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { url: "https://bridge.test/dispatch" },
+      context: { issueId: "issue-1", companyId: "company-1" },
+      onLog: async () => {},
+    });
+
+    // The adapter dispatched exactly once with no conditional guard —
+    // gate enforcement is the heartbeat service's responsibility, not the adapter's.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("implication 2: idempotency_key is included in every dispatch request body", async () => {
+    // Nanobot must receive idempotency_key so it can accept one logical run per key
+    // (bridge contract §Correlation and Idempotency).
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ dispatch_id: "d-2", run_id: "r-2", status: "succeeded", summary: "Done" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await execute({
+      runId: "r-2",
+      agent: { id: "agent-2", companyId: "company-2", name: "Agent", adapterType: "http", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { url: "https://bridge.test/dispatch" },
+      context: { dispatchId: "d-2", issueId: "issue-2", companyId: "company-2", idempotencyKey: "ikey-contract-test" },
+      onLog: async () => {},
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+
+    // Both camelCase and snake_case forms must be present for Nanobot compatibility
+    expect(body.idempotency_key).toBe("ikey-contract-test");
+    expect(body.idempotencyKey).toBe("ikey-contract-test");
+  });
+
+  it("implication 3: bridge response dispatch_id and run_id correlate back to the adapter result", async () => {
+    // Lifecycle updates that Nanobot sends back must carry the same dispatch_id and
+    // run_id so Paperclip can tie them to the correct run record.
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          dispatch_id: "dispatch-contract-3",
+          run_id: "run-contract-3",
+          status: "succeeded",
+          summary: "Done",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await execute({
+      runId: "run-contract-3",
+      agent: { id: "agent-3", companyId: "company-3", name: "Agent", adapterType: "http", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { url: "https://bridge.test/dispatch" },
+      context: { dispatchId: "dispatch-contract-3", issueId: "issue-3", companyId: "company-3" },
+      onLog: async () => {},
+    });
+
+    expect(result.resultJson).toMatchObject({
+      dispatch_id: "dispatch-contract-3",
+      run_id: "run-contract-3",
+    });
+  });
+
+  it("implication 4: success and failure payloads contain operator-visible result without Nanobot-internal fields", async () => {
+    // Success payload: Paperclip can persist operator-visible results solely from the
+    // bridge response — it does not need to query Nanobot internals.
+    const successFetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          dispatch_id: "dispatch-contract-4",
+          run_id: "run-contract-4",
+          status: "succeeded",
+          summary: "Research complete",
+          result: { output_text: "Full research output" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    );
+    vi.stubGlobal("fetch", successFetchMock);
+
+    const successResult = await execute({
+      runId: "run-contract-4",
+      agent: { id: "agent-4", companyId: "company-4", name: "Agent", adapterType: "http", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { url: "https://bridge.test/dispatch" },
+      context: { dispatchId: "dispatch-contract-4", issueId: "issue-4", companyId: "company-4" },
+      onLog: async () => {},
+    });
+
+    // Success: operator-visible fields come from the payload, not Nanobot internals
+    expect(successResult.summary).toBe("Research complete");
+    const successResultJson = successResult.resultJson as Record<string, unknown>;
+    const resultField = successResultJson?.result as Record<string, unknown> | undefined;
+    expect(resultField?.output_text).toBe("Full research output");
+    expect(successResult.exitCode).toBe(0);
+
+    vi.unstubAllGlobals();
+
+    // Failure payload: operator-visible error fields are self-contained in the bridge response
+    const failureFetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          dispatch_id: "dispatch-contract-4-fail",
+          run_id: "run-contract-4-fail",
+          status: "failed",
+          error: { code: "dispatch_execution_failed", message: "Worker error", retryable: false },
+        }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      )
+    );
+    vi.stubGlobal("fetch", failureFetchMock);
+
+    const failureResult = await execute({
+      runId: "run-contract-4-fail",
+      agent: { id: "agent-4", companyId: "company-4", name: "Agent", adapterType: "http", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { url: "https://bridge.test/dispatch" },
+      context: { dispatchId: "dispatch-contract-4-fail", issueId: "issue-4", companyId: "company-4" },
+      onLog: async () => {},
+    });
+
+    // Failure: error fields from bridge response are sufficient — no Nanobot internals needed
+    expect(failureResult.errorCode).toBe("dispatch_execution_failed");
+    expect(failureResult.errorMeta).toMatchObject({ retryable: false });
+  });
+});
+
 describe("http adapter testEnvironment", () => {
   it("probes configured healthUrl with GET for bridge endpoints", async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
